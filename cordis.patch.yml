@@ -1,0 +1,5 @@
+# dsh-vision-subagent bundle layer: one plugin row, dormant defaults.
+# Users override provider/model in their profile cordis.patch.yml (see README).
+- insert:
+    - id: vision-subagent
+      name: 'dsh-vision-subagent'
