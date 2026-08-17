@@ -12,7 +12,7 @@ import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import type { ImageAttachmentRef, ImageAttachmentLimits, ImageMediaType } from '@deepseek-ai/dsh-attachment'
 import { PLUGIN_NAME } from './config.js'
 import type { ResolvedConfig } from './config.js'
-import { buildChildPrompt } from './prompt.js'
+import { buildChildPrompt, pasteAnalysisQuestion } from './prompt.js'
 import { extractText } from './settle.js'
 import { WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, decodeVisionImageReference, encodeVisionImageReference } from './web-contract.js'
 
@@ -61,8 +61,6 @@ export interface WebPasteRequest {
 export type WebPasteResponse =
   | { ok: true; text: string; provider: string; model: string; image_count: number; references: string[] }
   | { ok: false; error: { code: string; message: string } }
-
-const DEFAULT_QUESTION = 'Describe this image in detail, including any visible text, UI elements, diagrams, or code.'
 
 const ACCEPTED_MEDIA = new Set<string>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
@@ -138,7 +136,7 @@ async function analyzeImages(
   signal: AbortSignal,
 ): Promise<string> {
   const blocks: ContentBlock[] = buildChildPrompt({
-    question: question.trim().length === 0 ? DEFAULT_QUESTION : question.trim(),
+    question: pasteAnalysisQuestion(question),
     imageNames: names,
     refs,
     guidance: config.guidance,

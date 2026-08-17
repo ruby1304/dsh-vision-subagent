@@ -13,7 +13,7 @@
 
 import { createElement as h, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
-import { WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, VISION_REFERENCE_FIELD, visionImageLink } from '../web-contract.js'
+import { ORIGINAL_IMAGE_HINT_LINE, WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, VISION_REFERENCE_FIELD, visionImageLink } from '../web-contract.js'
 import { projectBridgedContent } from './chat-render.js'
 import type { BridgedImage, BridgedProjection } from './chat-render.js'
 
@@ -159,7 +159,8 @@ function composeText(userText: string, analysis: AnalyzeOk): string {
   const links = analysis.references.map((reference, index) => visionImageLink(reference, index)).join('\n')
   const block = '[Vision analysis of the pasted image' + (analysis.image_count > 1 ? 's' : '')
     + ' — produced by the vision route ' + analysis.provider + '/' + analysis.model
-    + ' on an isolated context; the image bytes never entered this conversation]\n' + analysis.text
+    + ' on an isolated context; the image bytes never entered this conversation]\n'
+    + ORIGINAL_IMAGE_HINT_LINE + '\n' + analysis.text
   const parts: string[] = []
   if (userText.trim().length > 0) {
     parts.push(userText)
@@ -343,7 +344,8 @@ function createBridgedRow(slots: SlotsLike, key: string) {
           image,
           onOpen: () => setOpenIndex(index),
         }))),
-      h(stock as never, textProps as never),
+      // Image-only sends have no words for the stock bubble; skip it entirely.
+      projection.content.length > 0 ? h(stock as never, textProps as never) : null,
       openIndex >= 0 && projection.images[openIndex] !== undefined
         ? h(Lightbox, {
             image: projection.images[openIndex]!,

@@ -2,3 +2,7 @@ node_modules/
 lib/
 *.tsbuildinfo
 coverage/
+
+# vision_image_fetch materializes pasted originals here when a session's cwd
+# is this repo — disposable derived data, never commit.
+.dsh-vision/

@@ -9,7 +9,7 @@
  * @module dsh-vision-subagent/client/chat-render
  */
 
-import { VISION_LINK_PATTERN, VISION_REFERENCE_FIELD, decodeVisionImageReference } from '../web-contract.js'
+import { ORIGINAL_IMAGE_HINT_PREFIX, VISION_LINK_PATTERN, VISION_REFERENCE_FIELD, decodeVisionImageReference } from '../web-contract.js'
 
 export interface ChatContentBlock {
   readonly type: string
@@ -34,14 +34,28 @@ export interface BridgedProjection {
   readonly bridged: boolean
   /** User words plus the vision analysis text, with link lines removed. */
   readonly text: string
+  /** The user's own words only; empty when the send carried no real text. */
+  readonly visibleText: string
   /** The analysis section only (from the marker line onward), for the preview caption. */
   readonly analysis: string
   readonly images: readonly BridgedImage[]
-  /** View-only content (text-only) for the stock renderer. */
+  /** View-only content (text-only) for the stock renderer; empty for image-only sends. */
   readonly content: readonly ChatContentBlock[]
 }
 
 export const ANALYSIS_MARKER = '[Vision analysis'
+
+/** Matches the synthetic line composeText writes when the user sent no words. */
+const PLACEHOLDER_PATTERN = /^The user pasted \d+ images? without a text message\.$/
+
+/** Drop machine-facing hint lines (e.g. the vision_image_fetch pointer) from a caption. */
+function stripHintLines(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !line.startsWith(ORIGINAL_IMAGE_HINT_PREFIX))
+    .join('\n')
+    .trim()
+}
 
 interface LinkMatch {
   readonly start: number
@@ -125,12 +139,19 @@ export function projectBridgedContent(content: readonly ChatContentBlock[]): Bri
 
   const rawText = textOf([...kept.map((t) => ({ type: 'text', text: t })), ...rest])
   const trimmed = rawText.trim()
-  const { analysis } = splitAnalysis(trimmed)
+  const { question, analysis } = splitAnalysis(trimmed)
+  // The bubble shows only the user's own words: the analysis is model-facing
+  // context, and for the viewer it lives in the lightbox caption next to the
+  // image. An image-only send (placeholder line or no text) renders as the
+  // thumbnail gallery alone, with no stock text bubble beneath it.
+  const own = question.trim()
+  const visibleText = PLACEHOLDER_PATTERN.test(own) ? '' : own
   return {
     bridged,
     text: trimmed,
-    analysis,
+    visibleText,
+    analysis: stripHintLines(analysis),
     images,
-    content: trimmed === '' ? rest : [{ type: 'text', text: trimmed }, ...rest],
+    content: visibleText === '' ? rest : [{ type: 'text', text: visibleText }, ...rest],
   }
 }

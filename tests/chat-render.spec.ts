@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { projectBridgedContent, splitAnalysis } from '../src/client/chat-render.js'
-import { encodeVisionImageReference } from '../src/web-contract.js'
+import { ORIGINAL_IMAGE_HINT_LINE, encodeVisionImageReference } from '../src/web-contract.js'
+
+const hint = ORIGINAL_IMAGE_HINT_LINE
 
 function ref(id: string): string {
   return encodeVisionImageReference({
@@ -36,6 +38,25 @@ describe('projectBridgedContent', () => {
     expect(projection.text).toContain('图1是红色')
     expect(projection.text).not.toContain('Attached image')
     expect(projection.text).not.toContain('vision-subagent://')
+  })
+
+  it('keeps the analysis out of the bubble; only the user words render', () => {
+    const text = '判断穿搭\n\n' + linkA + '\n\n[Vision analysis of the pasted image — x]\n' + hint + '\n白衬衫配牛仔裤'
+    const projection = projectBridgedContent([{ type: 'text', text }])
+    expect(projection.visibleText).toBe('判断穿搭')
+    expect(projection.content).toEqual([{ type: 'text', text: '判断穿搭' }])
+    // The caption keeps the analysis but drops the machine-facing hint line.
+    expect(projection.analysis).toContain('白衬衫配牛仔裤')
+    expect(projection.analysis).not.toContain('Original image bytes')
+  })
+
+  it('renders image-only sends as the gallery alone, without a bubble', () => {
+    const text = 'The user pasted 2 images without a text message.\n\n' + linkA + '\n' + linkB + '\n\n[Vision analysis]\n描述'
+    const projection = projectBridgedContent([{ type: 'text', text }])
+    expect(projection.visibleText).toBe('')
+    expect(projection.content).toEqual([])
+    expect(projection.images).toHaveLength(2)
+    expect(projection.analysis).toContain('描述')
   })
 
   it('keeps non-text blocks and never matches foreign markdown links', () => {

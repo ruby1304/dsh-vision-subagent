@@ -40,8 +40,10 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 安装后，Web 输入框原生支持粘贴/拖入图片。发送时，client 插件会先把图片上传给插件的主机端点：
 
 1. 主机校验会话、把图片存成持久附件（大小/类型受部署限额约束）
-2. 视觉路由在**独立上下文**完成一次分析（图片字节不进主会话）
+2. 视觉路由在**独立上下文**完成一次分析（图片字节不进主会话），并且**以你的消息草稿为意图导向**——报错截图就聚焦错误文字与堆栈，穿搭问题就聚焦服装细节，而不是泛泛描述一切
 3. 只有分析文本随你的消息一起发给主模型——主模型直接回答，不需要再调工具
+
+聊天记录里你的气泡只显示你自己的文字和缩略图；分析内容收在点击缩略图打开的灯箱里，不会在气泡内重复展示。后续需要原图（图片编辑、像素级检查）时，持久消息里的附件链接可让模型调用 `vision_image_fetch` 把全保真原文件物化到工作区 `.dsh-vision/` 目录。
 
 分析失败（超时/路由故障）时消息不会发送，输入框草稿原样保留。这个通道与 vision_agent 工具互补：粘贴图片走自动分析，工作区已有文件由模型自主调用工具读取。
 
@@ -65,7 +67,7 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 | enabled | true | 总开关；关闭后工具仍在但拒绝执行 |
 | provider / model | 空（休眠） | 视觉路由；两者必须成对设置 |
 | subagentProvider | spawn | ctx.subagents 提供方 |
-| maxDepth | 0 | 子代理再委托深度上限（0 = 禁止） |
+| maxDepth | 1 | 子代理的绝对委托深度上限；1 = 视觉子代理可运行但禁止继续委托（0 会连子代理本身都拒绝——顶层 agent 的子代理深度即为 1） |
 | maxImages | 4 | 每次调用图片数上限 |
 | maxImageBytes | 10 MiB | 单图字节上限 |
 | maxPromptChars | 8000 | question 长度上限 |
@@ -79,7 +81,8 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 
 - 密钥只存在于视觉路由的凭据引用（环境变量）中，插件配置不接受明文 key，也不会把 key 写进任何日志或会话
 - 本地图片默认限制在会话工作区内；符号链接被拒绝；读取有字节上限（取配置与部署限额的较小值）
-- 子代理默认 maxDepth: 0，禁止继续委托；指令中明确禁止修改文件与执行 shell
+- 子代理默认 maxDepth: 1（可运行，但禁止继续委托）；指令中明确禁止修改文件与执行 shell
+- `vision_image_fetch` 只在会话工作区的 `.dsh-vision/` 下写入自生成的内容哈希文件名，任何调用方可控的路径片段都不会落盘
 
 ## 架构
 
@@ -99,6 +102,8 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 ## 路线图
 
 - [x] Web 粘贴桥：composer 贴图自动触发视觉分析（v0.2）
+- [x] 贴图分析意图感知：消息草稿引导视觉聚焦；气泡保持干净（v0.3）
+- [x] `vision_image_fetch`：把贴图原图物化到 `.dsh-vision/` 供编辑（v0.3）
 - [ ] Settings 面板（可视化选择 provider/model）
 - [ ] 远程图片 URL 支持（受控 fetch + 大小上限）
 - [ ] 内嵌 SKILL.md：教主模型何时该委托读图

@@ -28,6 +28,29 @@ export const CHILD_RULES = [
   '- Reply with the analysis text only: no preamble, no meta-commentary, no code fences.',
 ].join('\n')
 
+/** Fallback analysis directive when the user pasted images without any words. */
+export const PASTE_FALLBACK_QUESTION = 'Describe this image in detail, including any visible text, UI elements, diagrams, or code.'
+
+/**
+ * Turn the user's draft message into a context-aware analysis directive for
+ * the paste bridge. A raw draft like "测试" tells the vision route nothing
+ * about what to look at; wrapping it as the intent behind the message lets
+ * the route spend its detail budget on what the user actually cares about —
+ * clothing for an outfit question, exact error text for a debugging request.
+ */
+export function pasteAnalysisQuestion(userText: string): string {
+  const text = userText.trim()
+  if (text.length === 0) return PASTE_FALLBACK_QUESTION
+  return [
+    'The user pasted this image while composing the following message to an AI assistant:',
+    '"""',
+    text,
+    '"""',
+    'Analyze the image specifically in service of that message: focus on the aspects the message targets (for example exact error text and stack traces for a debugging request, clothing and styling details for an outfit question, layout and colors for a UI review).',
+    'Answer so the assistant can respond to the message directly, and mention unrelated notable content only briefly.',
+  ].join('\n')
+}
+
 /**
  * Assemble the one-shot child prompt: instructions + numbered image list +
  * the question, followed by the image blocks themselves.

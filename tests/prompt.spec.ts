@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import { buildChildPrompt } from '../src/prompt.js'
+import { PASTE_FALLBACK_QUESTION, buildChildPrompt, pasteAnalysisQuestion } from '../src/prompt.js'
 
 function ref(id: string): ImageAttachmentRef {
   return {
@@ -47,5 +47,18 @@ describe('buildChildPrompt', () => {
     const withGuidance = buildChildPrompt({ question: 'q', imageNames: ['a.png'], refs: [ref('1')], guidance: ' Count the buttons. ' })
     expect((withGuidance[0] as { text: string }).text).toContain('Additional instructions')
     expect((withGuidance[0] as { text: string }).text).toContain('Count the buttons.')
+  })
+})
+
+describe('pasteAnalysisQuestion', () => {
+  it('falls back to the generic description prompt when the draft is empty', () => {
+    expect(pasteAnalysisQuestion('   ')).toBe(PASTE_FALLBACK_QUESTION)
+  })
+
+  it('wraps the draft as the intent behind the message', () => {
+    const question = pasteAnalysisQuestion(' 看看图上这个人的穿搭 \n')
+    expect(question).toContain('看看图上这个人的穿搭')
+    expect(question).toContain('composing the following message')
+    expect(question).toContain('in service of that message')
   })
 })

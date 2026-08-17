@@ -69,6 +69,17 @@ export function decodeVisionImageReference(value: string): VisionImageRefParts |
   }
 }
 
+/**
+ * Machine-facing hint line embedded right after the analysis marker in the
+ * durable user turn: tells the model how to recover original bytes. The view
+ * layer strips it from the lightbox caption by this exact prefix.
+ */
+export const ORIGINAL_IMAGE_HINT_PREFIX = '[Original image bytes:'
+
+/** The hint line text the client composes into bridged user turns. */
+export const ORIGINAL_IMAGE_HINT_LINE = ORIGINAL_IMAGE_HINT_PREFIX
+  + ' call the vision_image_fetch tool with an attachment URL above to materialize the full-fidelity file into the workspace, e.g. for editing.]'
+
 /** The markdown link shape embedded in the durable user turn. */
 export const VISION_LINK_PATTERN = /\[Attached image \d+\]\(vision-subagent:\/\/image\/v1\/[^)\s]+\)/gu
 

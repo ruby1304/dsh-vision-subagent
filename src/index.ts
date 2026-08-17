@@ -20,6 +20,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { ConfigSchema, resolveConfig } from './config.js'
 import type { Config as ConfigInput } from './config.js'
 import { createVisionAgentTool } from './tool.js'
+import { createVisionImageFetchTool } from './tool-fetch.js'
 import { registerWebPaste } from './web-paste.js'
 
 export const name = 'vision-subagent'
@@ -34,5 +35,11 @@ export { buildChildPrompt } from './prompt.js'
 export function apply(ctx: Context, config: ConfigInput) {
   const resolved = resolveConfig(config)
   registerWebPaste(ctx, resolved)
-  return ctx.tools.register(createVisionAgentTool(ctx, resolved))
+  const attachments = (ctx as unknown as { attachments: Parameters<typeof createVisionImageFetchTool>[1] }).attachments
+  const disposeAgent = ctx.tools.register(createVisionAgentTool(ctx, resolved))
+  const disposeFetch = ctx.tools.register(createVisionImageFetchTool(resolved, attachments))
+  return () => {
+    disposeFetch?.()
+    disposeAgent?.()
+  }
 }

@@ -34,8 +34,10 @@ Restart `dsh web`, open a new session, and ask: "Look at ~/Desktop/error.png —
 The Web composer accepts pasted/dropped images natively. On send, the client plugin uploads them to the host endpoint, which:
 
 1. validates the session and stores the images as durable attachments (bounded by deployment limits)
-2. runs ONE vision-route analysis on an isolated context (image bytes never enter the main session)
+2. runs ONE vision-route analysis on an isolated context (image bytes never enter the main session), **guided by your draft message** — the analysis focuses on what your words target (error text for a debugging ask, outfit details for a styling ask) instead of describing everything generically
 3. sends only the analysis text along with your message — the main model answers immediately, no tool call needed
+
+In the chat history your bubble shows only your own words plus thumbnails; the analysis lives in the lightbox that opens when you click a thumbnail, never duplicated inline. Need the original bytes later (image editing, pixel-level inspection)? The durable message links let the model call `vision_image_fetch` to materialize the full-fidelity file into the workspace's `.dsh-vision/` directory.
 
 On failure (timeout, route error) the message is not sent and the composer draft is preserved. This channel complements the vision_agent tool: pasted images take the automatic path, while workspace files are read by the model calling the tool itself.
 
@@ -56,7 +58,7 @@ If a route already exists in Settings/Models (e.g. kimi-coding, minimax-cn), the
 | enabled | true | Master switch |
 | provider / model | '' (dormant) | Vision route; must be set together |
 | subagentProvider | spawn | ctx.subagents provider |
-| maxDepth | 0 | Child delegation cap (0 = none) |
+| maxDepth | 1 | Absolute delegation-depth cap for the spawned child; 1 lets the vision child run but forbids further delegation (0 would reject the child itself — a top-level agent's child is depth 1) |
 | maxImages | 4 | Images per call |
 | maxImageBytes | 10 MiB | Per-image byte cap |
 | maxPromptChars | 8000 | Question length cap |
@@ -70,7 +72,8 @@ If a route already exists in Settings/Models (e.g. kimi-coding, minimax-cn), the
 
 - Keys live only in the vision route's credential reference (env); the plugin accepts no plaintext secrets
 - Local images default to the session workspace; symlinks are rejected; reads are byte-capped
-- The child runs with maxDepth: 0 and instructions forbid file modification and shell use
+- The child runs with maxDepth: 1 (runs, but cannot delegate further) and instructions forbid file modification and shell use
+- `vision_image_fetch` writes only under the session workspace's `.dsh-vision/` with self-generated content-hashed filenames; no caller-controlled path segment reaches the disk
 
 ## Architecture
 
@@ -90,6 +93,8 @@ The plugin consumes harness services structurally (duck-typed) and is rc-version
 ## Roadmap
 
 - [x] Web paste bridge: composer images auto-trigger vision analysis (v0.2)
+- [x] Context-aware paste analysis: your draft message steers the vision focus; bubble stays clean (v0.3)
+- [x] `vision_image_fetch`: materialize pasted originals into `.dsh-vision/` for editing (v0.3)
 - [ ] Settings panel for provider/model selection
 - [ ] Remote image URL support (bounded fetch)
 - [ ] Embedded SKILL.md steering when to delegate

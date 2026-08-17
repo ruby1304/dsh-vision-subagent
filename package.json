@@ -1,6 +1,6 @@
 {
   "name": "dsh-vision-subagent",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Vision for text-only DeepSeek Harness agents: delegate image reading to a one-shot subagent on a configurable vision route (MiniMax / Kimi / any OpenAI-compatible provider), keeping image bytes and the vision model's context out of the main session.",
   "type": "module",
   "main": "lib/index.js",
