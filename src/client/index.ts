@@ -428,6 +428,11 @@ export function apply(ctx: ContextLike): () => void {
         name: CHAT_NODE_SLOT,
         key,
         priority: -100,
+        // Inherit the conversation namespace so the entry-derived translator
+        // stays a real function: the stock renderer we defer to calls it and
+        // crashes hard (slot error boundary, abdication, invisible row) when
+        // it receives an undefined one.
+        locale: 'conversation',
         registrant: PACKAGE_NAME + '/client',
       }, component))
       if (key === 'user') disposeUser = dispose as () => void

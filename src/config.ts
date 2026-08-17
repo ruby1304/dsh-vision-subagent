@@ -11,7 +11,10 @@ export const PLUGIN_NAME = 'dsh-vision-subagent'
 export const PLUGIN_ID = 'vision-subagent'
 
 export const DEFAULT_SUBAGENT_PROVIDER = 'spawn'
-export const DEFAULT_MAX_DEPTH = 0
+/** The spawn provider evaluates "child depth <= maxDepth"; a top-level
+ * agent's child computes depth 1, so 1 = the vision child runs but cannot
+ * delegate further. 0 would reject the child itself (depth 1 > 0). */
+export const DEFAULT_MAX_DEPTH = 1
 export const DEFAULT_MAX_IMAGES = 4
 export const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const DEFAULT_MAX_PROMPT_CHARS = 8000
@@ -47,7 +50,7 @@ export interface Config {
   model: string
   /** Registered ctx.subagents provider used to run the child (default 'spawn'). */
   subagentProvider: string
-  /** Delegation-depth cap for the child; 0 forbids further delegation. */
+  /** Delegation-depth cap for the spawned child; 1 lets it run without further delegation (0 would reject the child itself). */
   maxDepth: number
   /** Inclusive image count per call. */
   maxImages: number
@@ -101,5 +104,5 @@ export function resolveConfig(config: Config): ResolvedConfig {
       'dsh-vision-subagent: provider and model must be set together; got provider=' + JSON.stringify(config.provider) + ' model=' + JSON.stringify(config.model),
     )
   }
-  return { ...config, provider: config.provider.trim(), model: config.model.trim() }
+  return { ...config, provider: config.provider.trim(), model: config.model.trim(), maxDepth: Math.max(1, config.maxDepth) }
 }

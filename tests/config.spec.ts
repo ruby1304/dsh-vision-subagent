@@ -10,7 +10,7 @@ describe('ConfigSchema', () => {
       provider: '',
       model: '',
       subagentProvider: 'spawn',
-      maxDepth: 0,
+      maxDepth: 1,
       maxImages: 4,
       maxImageBytes: 10 * 1024 * 1024,
       maxPromptChars: 8000,
