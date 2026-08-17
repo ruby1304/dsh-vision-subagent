@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-08-17
+
+- The paste-analysis progress capsule now follows its owning session: switching sessions hides it, switching back re-shows it while the analysis still runs (previously it floated globally over every session)
+
 ## 0.3.0 — 2026-08-17
 
 - Paste analysis is intent-aware: the composer's draft message steers the vision route's focus (error text for debugging, outfit details for styling) instead of a generic description; empty drafts keep the detailed fallback

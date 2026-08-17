@@ -220,7 +220,17 @@ function ensureStyles(): void {
 interface PendingOverlay {
   setText(text: string): void
   setError(text: string): void
+  /** The capsule follows its owning session: hidden while another session is viewed. */
+  setVisible(visible: boolean): void
   remove(): void
+}
+
+/** Structural minimum of the client sessions service's selection feed. */
+interface SessionsLike {
+  readonly list: {
+    getSnapshot(): { current?: string }
+    subscribe(fn: () => void): () => void
+  }
 }
 
 function createPendingOverlay(): PendingOverlay {
@@ -240,6 +250,10 @@ function createPendingOverlay(): PendingOverlay {
       element.classList.add('dsh-vsa-error')
       spinner.style.display = 'none'
       label.textContent = text
+    },
+    setVisible(visible: boolean): void {
+      // The stylesheet supplies display:flex; only the opt-out is inline.
+      element.style.display = visible ? '' : 'none'
     },
     remove(): void {
       element.remove()
@@ -375,6 +389,26 @@ export function apply(ctx: ContextLike): () => void {
   }
   const original = descriptor.value as ConversationLike['sendSession']
 
+  // Pending analyses keyed by owning session: the floating capsule follows
+  // its session — switching away hides it, switching back re-shows it while
+  // the analysis is still running.
+  const pending = new Map<string, PendingOverlay>()
+  let currentSession: string | undefined
+  const syncOverlayVisibility = (): void => {
+    for (const [id, overlay] of pending) overlay.setVisible(id === currentSession)
+  }
+  const sessions = ctx.get('sessions') as SessionsLike | undefined
+  let unsubscribeSessions: (() => void) | undefined
+  if (sessions !== undefined
+    && typeof sessions.list?.getSnapshot === 'function'
+    && typeof sessions.list?.subscribe === 'function') {
+    currentSession = sessions.list.getSnapshot().current
+    unsubscribeSessions = sessions.list.subscribe(() => {
+      currentSession = sessions.list.getSnapshot().current
+      syncOverlayVisibility()
+    })
+  }
+
   const wrapped = async function sendSession(
     this: ConversationLike,
     session: SessionFace,
@@ -394,11 +428,17 @@ export function apply(ctx: ContextLike): () => void {
     const timer = setTimeout(() => controller.abort('vision paste analysis timed out'), REQUEST_TIMEOUT_MS)
     const overlay = createPendingOverlay()
     overlay.setText('正在分析图片…')
+    pending.set(session.sessionId, overlay)
+    syncOverlayVisibility()
     const startedAt = performance.now()
     const elapsed = setInterval(() => {
       overlay.setText('正在分析图片… ' + Math.round((performance.now() - startedAt) / 1000) + 's')
     }, 1000)
     let errorLinger: ReturnType<typeof setTimeout> | undefined
+    const settle = (): void => {
+      pending.delete(session.sessionId)
+      overlay.remove()
+    }
     try {
       const analysis = await analyzePasted(session.sessionId, text, attachments, fetch, controller.signal)
       this.releaseDraftImages(attachments)
@@ -406,12 +446,12 @@ export function apply(ctx: ContextLike): () => void {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       overlay.setError('图片分析失败：' + message + '（消息未发送，图片已保留）')
-      errorLinger = setTimeout(() => overlay.remove(), OVERLAY_ERROR_MS)
+      errorLinger = setTimeout(settle, OVERLAY_ERROR_MS)
       throw error
     } finally {
       clearTimeout(timer)
       clearInterval(elapsed)
-      if (errorLinger === undefined) overlay.remove()
+      if (errorLinger === undefined) settle()
     }
   }
 
@@ -444,6 +484,9 @@ export function apply(ctx: ContextLike): () => void {
 
   return () => {
     Object.defineProperty(owner, 'sendSession', descriptor)
+    unsubscribeSessions?.()
+    for (const overlay of pending.values()) overlay.remove()
+    pending.clear()
     disposeUser?.()
     disposeSteering?.()
   }
