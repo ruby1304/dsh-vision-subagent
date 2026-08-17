@@ -1,5 +1,7 @@
 # dsh-vision-subagent
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 Eyes for text-only DeepSeek Harness agents: delegate image reading to a **one-shot subagent** running on a separately configured **vision route** (MiniMax / Kimi / any OpenAI-compatible provider). Image bytes and the vision model's intermediate context **never enter the main session** — only the final text answer comes back.
 
 ## Why a subagent

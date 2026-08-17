@@ -1,5 +1,7 @@
 # dsh-vision-subagent
 
+[![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
+
 给纯文本模型的 DeepSeek Harness 装上眼睛：把读图任务交给一个跑在**独立视觉路由**（MiniMax / Kimi / 任意 OpenAI 兼容供应商）上的**一次性子代理**。图片字节和视觉模型的中间上下文**不会进入主会话**，主模型只收到最终的文字结论。
 
 ## 为什么是子代理
