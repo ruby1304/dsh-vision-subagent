@@ -29,6 +29,12 @@ Then edit `~/.dsh/profiles/web/cordis.patch.yml`:
 
 Restart `dsh web`, open a new session, and ask: "Look at ~/Desktop/error.png — what is the error?" The model calls `vision_agent(images=[...], question=...)` on its own.
 
+## Screenshots
+
+| Paste & ask | Analyzing | Clean bubble | Lightbox |
+| --- | --- | --- | --- |
+| ![composer with pasted image thumbnail](docs/images/paste-1-composer.png) | ![analysis progress capsule](docs/images/paste-2-analyzing.png) | ![bubble: thumbnails plus your words only](docs/images/paste-3-bubble.png) | ![lightbox with full analysis](docs/images/paste-4-lightbox.png) |
+
 ## Paste images into the composer (Codex-style)
 
 The Web composer accepts pasted/dropped images natively. On send, the client plugin uploads them to the host endpoint, which:

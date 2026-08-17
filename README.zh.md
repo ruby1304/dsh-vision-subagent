@@ -35,6 +35,12 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 # 模型会自主调用 vision_agent(images=[...], question=...)
 `
 
+## 效果展示
+
+| 贴图提问 | 分析中 | 干净的气泡 | 灯箱详情 |
+| --- | --- | --- | --- |
+| ![输入框中的贴图缩略图](docs/images/paste-1-composer.png) | ![分析进度胶囊](docs/images/paste-2-analyzing.png) | ![气泡只有缩略图和你的文字](docs/images/paste-3-bubble.png) | ![灯箱展示完整分析](docs/images/paste-4-lightbox.png) |
+
 ## 输入框直接粘贴图片（Codex 式）
 
 安装后，Web 输入框原生支持粘贴/拖入图片。发送时，client 插件会先把图片上传给插件的主机端点：
