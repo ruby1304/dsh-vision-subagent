@@ -14,7 +14,7 @@ import { PLUGIN_NAME } from './config.js'
 import type { ResolvedConfig } from './config.js'
 import { buildChildPrompt } from './prompt.js'
 import { extractText } from './settle.js'
-import { WEB_PASTE_ENDPOINT } from './web-contract.js'
+import { WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, decodeVisionImageReference, encodeVisionImageReference } from './web-contract.js'
 
 /** Structural minimums, version-tolerant. */
 interface WebServerLike {
@@ -36,6 +36,7 @@ interface AttachmentsLike {
   imageLimits: ImageAttachmentLimits
   validateImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<void>
   saveImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<ImageAttachmentRef>
+  readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<{ ref: ImageAttachmentRef; data: Uint8Array }>
 }
 
 export interface WebPasteServices {
@@ -58,7 +59,7 @@ export interface WebPasteRequest {
 }
 
 export type WebPasteResponse =
-  | { ok: true; text: string; provider: string; model: string; image_count: number }
+  | { ok: true; text: string; provider: string; model: string; image_count: number; references: string[] }
   | { ok: false; error: { code: string; message: string } }
 
 const DEFAULT_QUESTION = 'Describe this image in detail, including any visible text, UI elements, diagrams, or code.'
@@ -240,7 +241,16 @@ export function createWebPasteHandler(services: WebPasteServices, config: Resolv
       }
       try {
         const text = await analyzeImages(services, config, refs, names, request.question, controller.signal)
-        respond(res, 200, { ok: true, text, provider: config.provider, model: config.model, image_count: refs.length })
+        const references = refs.map((ref) => encodeVisionImageReference({
+          sessionId: request.sessionId,
+          attachmentId: String(ref.attachmentId),
+          mediaType: ref.mediaType,
+          bytes: ref.bytes,
+          width: ref.width,
+          height: ref.height,
+          ...(ref.name === undefined ? {} : { name: ref.name }),
+        }))
+        respond(res, 200, { ok: true, text, provider: config.provider, model: config.model, image_count: refs.length, references })
       } catch (error) {
         if (controller.signal.aborted) {
           res.destroy()
@@ -257,14 +267,67 @@ export function createWebPasteHandler(services: WebPasteServices, config: Resolv
   }
 }
 
+/**
+ * GET /vision-subagent/v1/web-image?ref=<encoded>: serve the exact attachment
+ * bytes a presentation link names, authorized by the session in the link.
+ * The durable turn carries only text links; this endpoint is how thumbnails
+ * and previews ever reach the browser.
+ */
+export function createWebImageHandler(services: WebPasteServices) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    try {
+      if (req.method !== 'GET') {
+        respond(res, 405, { ok: false, error: { code: 'VISION_METHOD_NOT_ALLOWED', message: 'web-image accepts GET only' } })
+        return
+      }
+      const url = new URL(req.url ?? '', 'http://localhost')
+      const rawRef = url.searchParams.get('ref') ?? ''
+      const parts = decodeVisionImageReference(rawRef)
+      if (parts === undefined) {
+        respond(res, 400, { ok: false, error: { code: 'VISION_INVALID_REFERENCE', message: 'reference is not a dsh-vision-subagent image link' } })
+        return
+      }
+      if (services.sessions.get(parts.sessionId) === undefined) {
+        respond(res, 404, { ok: false, error: { code: 'VISION_SESSION_NOT_FOUND', message: 'session does not exist on this host' } })
+        return
+      }
+      const stored = await services.attachments.readImage({
+        attachmentId: parts.attachmentId as never,
+        mediaType: parts.mediaType as ImageMediaType,
+        bytes: parts.bytes,
+        width: parts.width,
+        height: parts.height,
+        ...(parts.name === undefined ? {} : { name: parts.name }),
+      })
+      res.writeHead(200, {
+        'content-type': stored.ref.mediaType,
+        'content-length': String(stored.data.byteLength),
+        'cache-control': 'private, max-age=3600',
+      })
+      res.end(Buffer.from(stored.data))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      respond(res, 500, { ok: false, error: { code: 'VISION_IMAGE_READ_FAILED', message } })
+    }
+  }
+}
+
 export function registerWebPaste(ctx: { inject(deps: string[], apply: (webCtx: unknown) => () => void): unknown }, config: ResolvedConfig): void {
   ctx.inject(['webServer', 'sessions', 'llm'], (webCtx) => {
     const services = webCtx as unknown as WebPasteServices
-    const dispose = services.webServer.register({
+    const disposePaste = services.webServer.register({
       kind: 'exact',
       path: WEB_PASTE_ENDPOINT,
       handler: createWebPasteHandler(services, config),
     })
-    return () => { dispose() }
+    const disposeImage = services.webServer.register({
+      kind: 'exact',
+      path: WEB_IMAGE_ENDPOINT,
+      handler: createWebImageHandler(services),
+    })
+    return () => {
+      disposeImage()
+      disposePaste()
+    }
   })
 }

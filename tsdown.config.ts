@@ -9,6 +9,7 @@ const config: UserConfig = {
   format: 'cjs',
   platform: 'browser',
   target: 'es2023',
+  deps: { neverBundle: ['react'] },
   dts: false,
   sourcemap: false,
   clean: false,
