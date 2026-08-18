@@ -2,7 +2,7 @@
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
-Eyes for text-only DeepSeek Harness agents: delegate image reading to a **one-shot subagent** running on a separately configured **vision route** (MiniMax / Kimi / any OpenAI-compatible provider). Image bytes and the vision model's intermediate context **never enter the main session** — only the final text answer comes back.
+Capability-aware vision for DeepSeek Harness: multimodal current models receive pasted images through DSH's native path; text-only models delegate image reading to a **one-shot subagent** on a separately configured **vision route** (MiniMax / Kimi / any OpenAI-compatible provider). On the delegated path, image bytes and the vision model's intermediate context stay out of the main session — only the final text answer comes back.
 
 ## Why a subagent
 
@@ -37,15 +37,14 @@ Restart `dsh web`, open a new session, and ask: "Look at ~/Desktop/error.png —
 
 ## Paste images into the composer (Codex-style)
 
-The Web composer accepts pasted/dropped images natively. On send, the client plugin uploads them to the host endpoint, which:
+The Web composer already supports native image blocks. The plugin defaults to capability-aware `pasteMode: auto`:
 
-1. validates the session and stores the images as durable attachments (bounded by deployment limits)
-2. runs ONE vision-route analysis on an isolated context (image bytes never enter the main session), **guided by your draft message** — the analysis focuses on what your words target (error text for a debugging ask, outfit details for a styling ask) instead of describing everything generically
-3. sends only the analysis text along with your message — the main model answers immediately, no tool call needed
+- **Current model accepts images** → the plugin stays transparent and calls DSH's original `sendSession(text, imageIds)`. The current model sees the original pixels with the full conversation context; no analysis capsule or pre-description is produced.
+- **Current model is text-only** → the plugin delegates to its configured vision route: validates and stores the image, performs one intent-aware analysis on an isolated context, then sends only the analysis text plus durable original-image links to the main model.
 
-In the chat history your bubble shows only your own words plus thumbnails; the analysis lives in the lightbox that opens when you click a thumbnail, never duplicated inline. Need the original bytes later (image editing, pixel-level inspection)? The durable message links let the model call `vision_image_fetch` to materialize the full-fidelity file into the workspace's `.dsh-vision/` directory.
+The screenshots above show the delegated fallback path. Its chat bubble contains only your own words plus thumbnails; the analysis lives in the thumbnail lightbox. Need the original bytes later (image editing, pixel-level inspection)? `vision_image_fetch` materializes the full-fidelity file into `.dsh-vision/`.
 
-On failure (timeout, route error) the message is not sent and the composer draft is preserved. This channel complements the vision_agent tool: pasted images take the automatic path, while workspace files are read by the model calling the tool itself.
+Set `pasteMode: delegate` to force the isolated route even for multimodal models, or `pasteMode: native` to bypass the plugin and leave all admission to DSH. On delegated-analysis failure the message is not sent and the composer draft is preserved.
 
 ## MiniMax / Kimi vision models
 
@@ -69,6 +68,8 @@ If a route already exists in Settings/Models (e.g. kimi-coding, minimax-cn), the
 | maxImageBytes | 10 MiB | Per-image byte cap |
 | maxPromptChars | 8000 | Question length cap |
 | maxOutputChars | 32000 | Returned text truncation |
+| maxTokens | 4096 | Output token cap for delegated vision calls; 0 leaves it to the route |
+| pasteMode | auto | `auto`: native for image-capable current models, delegated fallback for text-only; `delegate`/`native` force one path |
 | allowRemoteUrls | false | Reserved (v0.1 supports local paths only) |
 | allowOutsideWorkspace | false | Workspace containment bypass |
 | extraAllowedRoots | [] | Extra allowed image roots |
@@ -101,6 +102,7 @@ The plugin consumes harness services structurally (duck-typed) and is rc-version
 - [x] Web paste bridge: composer images auto-trigger vision analysis (v0.2)
 - [x] Context-aware paste analysis: your draft message steers the vision focus; bubble stays clean (v0.3)
 - [x] `vision_image_fetch`: materialize pasted originals into `.dsh-vision/` for editing (v0.3)
+- [x] Capability-aware paste routing: native ImageBlocks for multimodal models, delegated fallback for text-only (v0.4)
 - [ ] Settings panel for provider/model selection
 - [ ] Remote image URL support (bounded fetch)
 - [ ] Embedded SKILL.md steering when to delegate
@@ -111,7 +113,7 @@ The plugin consumes harness services structurally (duck-typed) and is rc-version
 npm install && npm run typecheck && npm test && npm run build
 `
 
-Before publishing, align @deepseek-ai/* versions in dependencies/devDependencies with the target harness rc (runtime deps currently rc.6, peer range >=rc.5 <0.1.0 — compatible with a local rc.5 checkout).
+The package is developed and release-tested against DSH `0.1.0-rc.7`. Its peer range remains `>=0.1.0-rc.5 <0.1.0` because the plugin consumes only the stable structural seams introduced in rc.5.
 
 ## License
 

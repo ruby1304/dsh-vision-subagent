@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0 — 2026-08-18
+
+- Capability-aware paste routing (`pasteMode: auto`, now the default): image-capable current models receive pasted originals through DSH's native ImageBlock path; only text-only models use the isolated vision-route analysis fallback
+- New `pasteMode` options: `delegate` forces the previous isolated-analysis behavior; `native` bypasses the plugin and leaves image admission to DSH
+- Native sends create no analysis capsule or synthetic description; the current multimodal model sees original pixels with full conversation context
+- Forced `native` / `delegate` modes now bypass both the session model directory and model-capability resolver; only `auto` performs capability lookup
+- Capability preflight and delegated analysis use independent timeouts, so a stalled preflight can safely fall back without reusing an aborted signal
+- Release validation target updated to DSH `0.1.0-rc.7`
+
 ## 0.3.1 — 2026-08-17
 
 - The paste-analysis progress capsule now follows its owning session: switching sessions hides it, switching back re-shows it while the analysis still runs (previously it floated globally over every session)

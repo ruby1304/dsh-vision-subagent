@@ -3,6 +3,7 @@
 
 export const WEB_PASTE_ENDPOINT = '/vision-subagent/v1/web-paste'
 export const WEB_IMAGE_ENDPOINT = '/vision-subagent/v1/web-image'
+export const WEB_CAPABILITY_ENDPOINT = '/vision-subagent/v1/model-capability'
 
 /** Field carrying the opaque reference on projected attachment objects. */
 export const VISION_REFERENCE_FIELD = 'visionSubagentReference'

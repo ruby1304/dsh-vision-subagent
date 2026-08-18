@@ -1,7 +1,7 @@
 {
   "name": "dsh-vision-subagent",
-  "version": "0.3.1",
-  "description": "Vision for text-only DeepSeek Harness agents: delegate image reading to a one-shot subagent on a configurable vision route (MiniMax / Kimi / any OpenAI-compatible provider), keeping image bytes and the vision model's context out of the main session.",
+  "version": "0.4.0",
+  "description": "Capability-aware vision for DeepSeek Harness: native image input for multimodal models, with an isolated one-shot vision-route fallback for text-only models.",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
@@ -26,6 +26,7 @@
     "client": {
       "platform": "web",
       "inject": [
+        "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-slots"
@@ -52,9 +53,9 @@
     "prepack": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
     "@deepseek-ai/schemastery": "3.18.1",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
@@ -86,11 +87,11 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-agent": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-attachment": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-fs": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-subagent": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7",
     "@types/node": "^24.13.3",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0",

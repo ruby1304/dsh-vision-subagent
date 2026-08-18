@@ -20,6 +20,10 @@ export const DEFAULT_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 export const DEFAULT_MAX_PROMPT_CHARS = 8000
 export const DEFAULT_MAX_OUTPUT_CHARS = 32000
 export const DEFAULT_MAX_TOKENS = 4096
+export const DEFAULT_PASTE_MODE = 'auto' as const
+
+/** How pasted composer images are routed. */
+export type PasteMode = 'auto' | 'delegate' | 'native'
 
 /** Extensions the v1 attachment path understands. */
 const IMAGE_MEDIA_TYPES = {
@@ -62,6 +66,8 @@ export interface Config {
   maxOutputChars: number
   /** max_tokens for the vision calls (subagent child and paste analysis); 0 leaves it to the provider. */
   maxTokens: number
+  /** auto = native for image-capable current models, delegate otherwise; delegate/native force one path. */
+  pasteMode: PasteMode
   /** Permit HTTP(S) image URLs in `images`. */
   allowRemoteUrls: boolean
   /** Allow image paths outside the session workspace (plus extraAllowedRoots). */
@@ -83,6 +89,7 @@ export const ConfigSchema = Schema.object({
   maxPromptChars: Schema.number().step(1).min(1).default(DEFAULT_MAX_PROMPT_CHARS),
   maxOutputChars: Schema.number().step(1).min(1).default(DEFAULT_MAX_OUTPUT_CHARS),
   maxTokens: Schema.number().step(1).min(0).default(DEFAULT_MAX_TOKENS),
+  pasteMode: Schema.union([Schema.const('auto'), Schema.const('delegate'), Schema.const('native')]).default(DEFAULT_PASTE_MODE),
   allowRemoteUrls: Schema.boolean().default(false),
   allowOutsideWorkspace: Schema.boolean().default(false),
   extraAllowedRoots: Schema.array(Schema.string()).default([]),
