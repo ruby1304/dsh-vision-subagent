@@ -16,11 +16,19 @@ describe('ConfigSchema', () => {
       maxPromptChars: 8000,
       maxOutputChars: 32000,
       maxTokens: 4096,
+      pasteMode: 'auto',
       allowRemoteUrls: false,
       allowOutsideWorkspace: false,
       extraAllowedRoots: [],
       guidance: '',
     })
+  })
+
+  it('accepts all paste modes and rejects unknown ones', () => {
+    for (const pasteMode of ['auto', 'delegate', 'native'] as const) {
+      expect(ConfigSchema({ pasteMode }).pasteMode).toBe(pasteMode)
+    }
+    expect(() => ConfigSchema({ pasteMode: 'other' as never })).toThrow()
   })
 
   it('rejects a fractional maxDepth at schema level', () => {

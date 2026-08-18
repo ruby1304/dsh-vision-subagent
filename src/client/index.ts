@@ -16,13 +16,17 @@ import type { ReactElement } from 'react'
 import { ORIGINAL_IMAGE_HINT_LINE, WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, VISION_REFERENCE_FIELD, visionImageLink } from '../web-contract.js'
 import { projectBridgedContent } from './chat-render.js'
 import type { BridgedImage, BridgedProjection } from './chat-render.js'
+import { resolvePasteRouteWithTimeout } from '../paste-preflight.js'
+import type { PasteRouteConnection } from '../paste-preflight.js'
+import type { PasteRoute } from '../paste-route.js'
 
-export const inject = ['conversation', 'slots']
+export const inject = ['connection', 'conversation', 'sessions', 'slots']
 
 const PACKAGE_NAME = 'dsh-vision-subagent'
 const CHAT_NODE_SLOT = 'conversation.chat.node'
 const RENDER_MARKER = Symbol.for(PACKAGE_NAME + '.client.chat-render')
 const CORDIS_ORIGINAL = Symbol.for('cordis.original')
+const PREFLIGHT_TIMEOUT_MS = 10_000
 const REQUEST_TIMEOUT_MS = 120_000
 const OVERLAY_ERROR_MS = 5000
 
@@ -382,6 +386,7 @@ export function apply(ctx: ContextLike): () => void {
   if (conversation === undefined) {
     throw new Error(PACKAGE_NAME + '/client: conversation service is unavailable')
   }
+  const connection = ctx.get('connection') as PasteRouteConnection | undefined
   const owner = sendSessionOwner(conversation)
   const descriptor = Object.getOwnPropertyDescriptor(owner, 'sendSession')
   if (descriptor === undefined || typeof descriptor.value !== 'function') {
@@ -420,10 +425,32 @@ export function apply(ctx: ContextLike): () => void {
       await original.call(this, session, text, imageIds, mode)
       return
     }
+    let route: PasteRoute = 'delegate'
+    if (connection !== undefined) {
+      try {
+        route = await resolvePasteRouteWithTimeout(
+          session.sessionId,
+          connection,
+          fetch,
+          PREFLIGHT_TIMEOUT_MS,
+        )
+      } catch (error) {
+        // Capability uncertainty must not eat the user's send. The historical
+        // delegate path is the safe fallback because it works on text-only
+        // routes; native admission remains available when preflight succeeds.
+        console.warn('[' + PACKAGE_NAME + '] paste capability preflight failed; falling back to delegate:', error)
+      }
+    }
+    if (route === 'native') {
+      await original.call(this, session, text, imageIds, mode)
+      return
+    }
     const attachments = this.draftImages(imageIds)
     if (attachments.length !== imageIds.length) {
       throw new Error(PACKAGE_NAME + '/client: one or more pasted images are no longer available')
     }
+    // Analysis gets its own controller. A timed-out capability preflight must
+    // never poison the delegated fallback with an already-aborted signal.
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort('vision paste analysis timed out'), REQUEST_TIMEOUT_MS)
     const overlay = createPendingOverlay()

@@ -2,7 +2,7 @@
 
 [![Awesome DSH Plugin](https://awesome-dsh-plugin.com/badge.svg)](https://awesome-dsh-plugin.com)
 
-给纯文本模型的 DeepSeek Harness 装上眼睛：把读图任务交给一个跑在**独立视觉路由**（MiniMax / Kimi / 任意 OpenAI 兼容供应商）上的**一次性子代理**。图片字节和视觉模型的中间上下文**不会进入主会话**，主模型只收到最终的文字结论。
+给 DeepSeek Harness 加上能力感知的视觉路由：当前多模态模型直接走 DSH 原生图片通道；纯文本模型才把读图任务交给运行在**独立视觉路由**（MiniMax / Kimi / 任意 OpenAI 兼容供应商）上的**一次性子代理**。在委托路径中，图片字节和视觉模型的中间上下文不会进入主会话，主模型只收到最终文字结论。
 
 ## 为什么是子代理
 
@@ -43,15 +43,14 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 
 ## 输入框直接粘贴图片（Codex 式）
 
-安装后，Web 输入框原生支持粘贴/拖入图片。发送时，client 插件会先把图片上传给插件的主机端点：
+DSH Web 本身已经支持原生图片块。插件默认使用能力感知的 `pasteMode: auto`：
 
-1. 主机校验会话、把图片存成持久附件（大小/类型受部署限额约束）
-2. 视觉路由在**独立上下文**完成一次分析（图片字节不进主会话），并且**以你的消息草稿为意图导向**——报错截图就聚焦错误文字与堆栈，穿搭问题就聚焦服装细节，而不是泛泛描述一切
-3. 只有分析文本随你的消息一起发给主模型——主模型直接回答，不需要再调工具
+- **当前模型支持图片** → 插件完全透明，调用 DSH 原始 `sendSession(text, imageIds)`；当前模型在完整对话上下文里直接看原图，不出现分析胶囊，也不生成预描述。
+- **当前模型是纯文本** → 插件才启用视觉路由兜底：校验并保存图片，在隔离上下文中按消息意图完成一次分析，再把分析文字和原图持久引用交给主模型。
 
-聊天记录里你的气泡只显示你自己的文字和缩略图；分析内容收在点击缩略图打开的灯箱里，不会在气泡内重复展示。后续需要原图（图片编辑、像素级检查）时，持久消息里的附件链接可让模型调用 `vision_image_fetch` 把全保真原文件物化到工作区 `.dsh-vision/` 目录。
+上方截图展示的是委托兜底路径。气泡只显示你的文字和缩略图；分析内容收在缩略图灯箱里。后续需要原图（图片编辑、像素级检查）时，`vision_image_fetch` 可把全保真文件物化到 `.dsh-vision/`。
 
-分析失败（超时/路由故障）时消息不会发送，输入框草稿原样保留。这个通道与 vision_agent 工具互补：粘贴图片走自动分析，工作区已有文件由模型自主调用工具读取。
+可设 `pasteMode: delegate`，即使当前模型支持图片也强制隔离分析；或设 `pasteMode: native`，彻底绕过插件，把图片准入交给 DSH。委托分析失败时消息不会发送，输入框草稿原样保留。
 
 ## MiniMax / Kimi 视觉模型速查
 
@@ -78,6 +77,8 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 | maxImageBytes | 10 MiB | 单图字节上限 |
 | maxPromptChars | 8000 | question 长度上限 |
 | maxOutputChars | 32000 | 返回文本截断长度 |
+| maxTokens | 4096 | 委托视觉调用的输出 token 上限；0 = 交给路由默认值 |
+| pasteMode | auto | `auto`：多模态当前模型走原生、纯文本才委托；`delegate` / `native` 强制指定路径 |
 | allowRemoteUrls | false | 是否允许 http(s) 图片 URL（v0.1 保留字段，仅本地路径） |
 | allowOutsideWorkspace | false | 是否允许工作区外的本地图片 |
 | extraAllowedRoots | [] | 额外允许的图片根目录 |
@@ -110,6 +111,7 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 - [x] Web 粘贴桥：composer 贴图自动触发视觉分析（v0.2）
 - [x] 贴图分析意图感知：消息草稿引导视觉聚焦；气泡保持干净（v0.3）
 - [x] `vision_image_fetch`：把贴图原图物化到 `.dsh-vision/` 供编辑（v0.3）
+- [x] 能力感知贴图路由：多模态模型走原生 ImageBlock，纯文本才委托（v0.4）
 - [ ] Settings 面板（可视化选择 provider/model）
 - [ ] 远程图片 URL 支持（受控 fetch + 大小上限）
 - [ ] 内嵌 SKILL.md：教主模型何时该委托读图
@@ -120,7 +122,7 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 npm install && npm run typecheck && npm test && npm run build
 `
 
-发布前把 dependencies / devDependencies 中的 @deepseek-ai/* 版本与目标 harness rc 对齐（当前运行时依赖 rc.6，peer 范围 >=rc.5 <0.1.0，兼容本地 rc.5 checkout）。
+当前包以 DSH `0.1.0-rc.7` 开发并执行发布验证。peer 范围仍为 `>=0.1.0-rc.5 <0.1.0`，因为插件只使用 rc.5 起稳定存在的结构化接口。
 
 ## License
 

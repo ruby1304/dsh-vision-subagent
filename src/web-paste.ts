@@ -14,7 +14,7 @@ import { PLUGIN_NAME } from './config.js'
 import type { ResolvedConfig } from './config.js'
 import { buildChildPrompt, pasteAnalysisQuestion } from './prompt.js'
 import { extractText } from './settle.js'
-import { WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, decodeVisionImageReference, encodeVisionImageReference } from './web-contract.js'
+import { WEB_CAPABILITY_ENDPOINT, WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, decodeVisionImageReference, encodeVisionImageReference } from './web-contract.js'
 
 /** Structural minimums, version-tolerant. */
 interface WebServerLike {
@@ -24,6 +24,7 @@ interface SessionsLike {
   get(id: string): unknown
 }
 interface LlmLike {
+  resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<{ inputModalities?: readonly string[] }>
   stream(options: {
     provider: string
     model: string
@@ -32,6 +33,16 @@ interface LlmLike {
     signal?: AbortSignal
   }): AsyncIterable<unknown>
 }
+
+export interface ModelResolverLike {
+  resolveModelInfo(provider: string, model: string, signal?: AbortSignal): Promise<{ inputModalities?: readonly string[] }>
+}
+
+export type ModelCapabilityDecision =
+  | { pasteMode: 'native'; acceptsImage: true }
+  | { pasteMode: 'delegate'; acceptsImage: false }
+  | { pasteMode: 'auto'; requiresModel: true }
+  | { pasteMode: 'auto'; acceptsImage: boolean }
 interface AttachmentsLike {
   imageLimits: ImageAttachmentLimits
   validateImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<void>
@@ -62,9 +73,35 @@ export type WebPasteResponse =
   | { ok: true; text: string; provider: string; model: string; image_count: number; references: string[] }
   | { ok: false; error: { code: string; message: string } }
 
+/**
+ * Resolve paste policy without consulting the model catalog unless auto mode
+ * actually needs a concrete route. This makes native/delegate real forced
+ * modes and lets the browser skip sessions.models for both of them.
+ */
+export async function resolveModelCapability(
+  resolver: ModelResolverLike,
+  config: ResolvedConfig,
+  route?: { provider: string; model: string },
+): Promise<ModelCapabilityDecision> {
+  if (!config.enabled || config.pasteMode === 'native') {
+    return { pasteMode: 'native', acceptsImage: true }
+  }
+  if (config.pasteMode === 'delegate') {
+    return { pasteMode: 'delegate', acceptsImage: false }
+  }
+  if (route === undefined) {
+    return { pasteMode: 'auto', requiresModel: true }
+  }
+  const info = await resolver.resolveModelInfo(route.provider, route.model)
+  return {
+    pasteMode: 'auto',
+    acceptsImage: info.inputModalities?.includes('image') === true,
+  }
+}
+
 const ACCEPTED_MEDIA = new Set<string>(['image/png', 'image/jpeg', 'image/webp', 'image/gif'])
 
-function respond(res: ServerResponse, status: number, payload: WebPasteResponse): void {
+function respond(res: ServerResponse, status: number, payload: unknown): void {
   const body = JSON.stringify(payload)
   res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' })
   res.end(body)
@@ -266,6 +303,57 @@ export function createWebPasteHandler(services: WebPasteServices, config: Resolv
 }
 
 /**
+ * POST model capability preflight: the client supplies the current session's
+ * provider/model (read through the ordinary sessions.models RPC); the host
+ * resolves the exact route's declared input modalities and returns the paste
+ * policy. No image bytes are uploaded on this path.
+ */
+export function createModelCapabilityHandler(services: Pick<WebPasteServices, 'llm'>, config: ResolvedConfig) {
+  return async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
+    if (req.method !== 'POST') {
+      respond(res, 405, { ok: false, error: { code: 'VISION_METHOD_NOT_ALLOWED', message: 'model-capability accepts POST only' } })
+      return
+    }
+    let raw: unknown
+    try {
+      raw = await readBoundedJson(req, 4096)
+    } catch (error) {
+      respond(res, 400, { ok: false, error: { code: 'VISION_INVALID_ARGUMENT', message: error instanceof Error ? error.message : 'invalid request' } })
+      return
+    }
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+      respond(res, 400, { ok: false, error: { code: 'VISION_INVALID_ARGUMENT', message: 'request must be a JSON object' } })
+      return
+    }
+    const record = raw as Record<string, unknown>
+    const hasProvider = typeof record.provider === 'string' && record.provider.length > 0
+    const hasModel = typeof record.model === 'string' && record.model.length > 0
+    if (hasProvider !== hasModel) {
+      respond(res, 400, { ok: false, error: { code: 'VISION_INVALID_ARGUMENT', message: 'provider and model must both be supplied or both be omitted' } })
+      return
+    }
+    try {
+      const decision = await resolveModelCapability(
+        services.llm,
+        config,
+        hasProvider && hasModel
+          ? { provider: record.provider as string, model: record.model as string }
+          : undefined,
+      )
+      respond(res, 200, { ok: true, ...decision })
+    } catch (error) {
+      respond(res, 502, {
+        ok: false,
+        error: {
+          code: 'VISION_MODEL_UNRESOLVED',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      })
+    }
+  }
+}
+
+/**
  * GET /vision-subagent/v1/web-image?ref=<encoded>: serve the exact attachment
  * bytes a presentation link names, authorized by the session in the link.
  * The durable turn carries only text links; this endpoint is how thumbnails
@@ -318,6 +406,11 @@ export function registerWebPaste(ctx: { inject(deps: string[], apply: (webCtx: u
       path: WEB_PASTE_ENDPOINT,
       handler: createWebPasteHandler(services, config),
     })
+    const disposeCapability = services.webServer.register({
+      kind: 'exact',
+      path: WEB_CAPABILITY_ENDPOINT,
+      handler: createModelCapabilityHandler(services, config),
+    })
     const disposeImage = services.webServer.register({
       kind: 'exact',
       path: WEB_IMAGE_ENDPOINT,
@@ -325,6 +418,7 @@ export function registerWebPaste(ctx: { inject(deps: string[], apply: (webCtx: u
     })
     return () => {
       disposeImage()
+      disposeCapability()
       disposePaste()
     }
   })
