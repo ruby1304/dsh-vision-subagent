@@ -39,7 +39,7 @@ Restart `dsh web`, open a new session, and ask: "Look at ~/Desktop/error.png —
 
 The Web composer already supports native image blocks. The plugin defaults to capability-aware `pasteMode: auto`:
 
-- **Current model accepts images** → the plugin stays transparent and calls DSH's original `sendSession(text, imageIds)`. The current model sees the original pixels with the full conversation context; no analysis capsule or pre-description is produced.
+- **Current model accepts images** → the plugin stays transparent and calls DSH's original `sendSession(text, imageIds, mode, signal)`. The current model sees the original pixels with the full conversation context; no analysis capsule or pre-description is produced.
 - **Current model is text-only** → the plugin delegates to its configured vision route: validates and stores the image, performs one intent-aware analysis on an isolated context, then sends only the analysis text plus durable original-image links to the main model.
 
 The screenshots above show the delegated fallback path. Its chat bubble contains only your own words plus thumbnails; the analysis lives in the thumbnail lightbox. Need the original bytes later (image editing, pixel-level inspection)? `vision_image_fetch` materializes the full-fidelity file into `.dsh-vision/`.
@@ -113,7 +113,7 @@ The plugin consumes harness services structurally (duck-typed) and is rc-version
 npm install && npm run typecheck && npm test && npm run build
 `
 
-The package is developed and release-tested against DSH `0.1.0-rc.7`. Its peer range remains `>=0.1.0-rc.5 <0.1.0` because the plugin consumes only the stable structural seams introduced in rc.5.
+Version 0.4.1 is developed and release-tested against DSH `0.1.0-rc.8`. The delegated Web path now uses rc.8's atomic batch image admission, forwards submit cancellation, returns the native `SubmitOutcome`, and releases draft images only after a successful Host admission. DSH runtime packages are optional peers rather than ordinary dependencies, preventing a profile install from adding a second Harness runtime copy.
 
 ## License
 

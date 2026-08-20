@@ -11,9 +11,9 @@ export interface ChildPromptInput {
   /** The visual question from the main agent. */
   question: string
   /** Display names for the attached images, in order. */
-  imageNames: string[]
+  imageNames: readonly string[]
   /** Durable attachment references, in the same order as imageNames. */
-  refs: ImageAttachmentRef[]
+  refs: readonly ImageAttachmentRef[]
   /** Optional extra steering appended to the rules block. */
   guidance: string
 }

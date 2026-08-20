@@ -45,7 +45,7 @@ dsh plugin --profile web add /path/to/dsh-vision-subagent
 
 DSH Web 本身已经支持原生图片块。插件默认使用能力感知的 `pasteMode: auto`：
 
-- **当前模型支持图片** → 插件完全透明，调用 DSH 原始 `sendSession(text, imageIds)`；当前模型在完整对话上下文里直接看原图，不出现分析胶囊，也不生成预描述。
+- **当前模型支持图片** → 插件完全透明，调用 DSH 原始 `sendSession(text, imageIds, mode, signal)`；当前模型在完整对话上下文里直接看原图，不出现分析胶囊，也不生成预描述。
 - **当前模型是纯文本** → 插件才启用视觉路由兜底：校验并保存图片，在隔离上下文中按消息意图完成一次分析，再把分析文字和原图持久引用交给主模型。
 
 上方截图展示的是委托兜底路径。气泡只显示你的文字和缩略图；分析内容收在缩略图灯箱里。后续需要原图（图片编辑、像素级检查）时，`vision_image_fetch` 可把全保真文件物化到 `.dsh-vision/`。
@@ -122,7 +122,7 @@ DSH Web 本身已经支持原生图片块。插件默认使用能力感知的 `p
 npm install && npm run typecheck && npm test && npm run build
 `
 
-当前包以 DSH `0.1.0-rc.7` 开发并执行发布验证。peer 范围仍为 `>=0.1.0-rc.5 <0.1.0`，因为插件只使用 rc.5 起稳定存在的结构化接口。
+0.4.1 以 DSH `0.1.0-rc.8` 开发并执行发布验证。Web 委托路径现在使用 rc.8 的原子批量图片准入，传递发送取消信号，返回原生 `SubmitOutcome`，并且只在 Host 确认接收成功后释放草稿图片。DSH 运行时包改为可选 peer，不再让 profile 额外安装一套 Harness 运行时。
 
 ## License
 

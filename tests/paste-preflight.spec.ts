@@ -112,4 +112,27 @@ describe('resolvePasteRouteWithTimeout', () => {
     const analysisController = new AbortController()
     expect(analysisController.signal.aborted).toBe(false)
   })
+
+  it('propagates caller cancellation while a model-directory RPC is hanging', async () => {
+    const models = vi.fn(() => new Promise<never>(() => {}))
+    let preflightSignal: AbortSignal | undefined
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      preflightSignal = init?.signal instanceof AbortSignal ? init.signal : undefined
+      return jsonResponse({ ok: true, pasteMode: 'auto', requiresModel: true })
+    }) as unknown as typeof fetch
+    const caller = new AbortController()
+    const cancelled = new Error('composer submit cancelled')
+
+    const pending = resolvePasteRouteWithTimeout(
+      'session-1',
+      connection(models),
+      fetcher,
+      10_000,
+      caller.signal,
+    )
+    caller.abort(cancelled)
+
+    await expect(pending).rejects.toBe(cancelled)
+    expect(preflightSignal?.aborted).toBe(true)
+  })
 })

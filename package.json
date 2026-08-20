@@ -1,6 +1,6 @@
 {
   "name": "dsh-vision-subagent",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Capability-aware vision for DeepSeek Harness: native image input for multimodal models, with an isolated one-shot vision-route fallback for text-only models.",
   "type": "module",
   "main": "lib/index.js",
@@ -28,8 +28,7 @@
       "inject": [
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-runtime",
-        "@deepseek-ai/dsh-client-ui-conversation",
-        "@deepseek-ai/dsh-client-ui-slots"
+        "@deepseek-ai/dsh-client-ui-conversation"
       ]
     }
   },
@@ -53,17 +52,20 @@
     "prepack": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.7",
-    "@deepseek-ai/schemastery": "3.18.1",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7"
+    "@deepseek-ai/schemastery": "3.18.1"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-agent": ">=0.1.0-rc.5 <0.1.0",
-    "@deepseek-ai/dsh-attachment": ">=0.1.0-rc.5 <0.1.0",
-    "@deepseek-ai/dsh-fs": ">=0.1.0-rc.5 <0.1.0",
-    "@deepseek-ai/dsh-llm": ">=0.1.0-rc.5 <0.1.0",
-    "@deepseek-ai/dsh-subagent": ">=0.1.0-rc.5 <0.1.0"
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.8"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -75,6 +77,18 @@
     "@deepseek-ai/dsh-attachment": {
       "optional": true
     },
+    "@deepseek-ai/dsh-client-connection": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-runtime": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-conversation": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-input-trigger": {
+      "optional": true
+    },
     "@deepseek-ai/dsh-fs": {
       "optional": true
     },
@@ -83,20 +97,29 @@
     },
     "@deepseek-ai/dsh-subagent": {
       "optional": true
+    },
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
     }
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.1",
-    "@deepseek-ai/dsh-agent": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-attachment": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-fs": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-llm": "0.1.0-rc.7",
-    "@deepseek-ai/dsh-subagent": "0.1.0-rc.7",
+    "@deepseek-ai/dsh-agent": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-attachment": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-connection": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-conversation": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-client-ui-input-trigger": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-fs": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-llm": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-subagent": "0.1.0-rc.8",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.8",
     "@types/node": "^24.13.3",
     "typescript": "^5.9.3",
     "vitest": "^4.0.0",
     "tsdown": "0.22.2",
-    "@types/react": "~18.3.1"
+    "@types/react": "~18.3.1",
+    "react": "^18.2.0"
   },
   "repository": {
     "type": "git",

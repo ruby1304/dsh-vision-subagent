@@ -9,7 +9,13 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { BlockAssembler, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import type { ImageAttachmentRef, ImageAttachmentLimits, ImageMediaType } from '@deepseek-ai/dsh-attachment'
+import { admitEncodedImages } from '@deepseek-ai/dsh-attachment'
+import type {
+  AttachmentStore,
+  EncodedImageAttachment,
+  ImageAttachmentRef,
+  ImageMediaType,
+} from '@deepseek-ai/dsh-attachment'
 import { PLUGIN_NAME } from './config.js'
 import type { ResolvedConfig } from './config.js'
 import { buildChildPrompt, pasteAnalysisQuestion } from './prompt.js'
@@ -43,24 +49,22 @@ export type ModelCapabilityDecision =
   | { pasteMode: 'delegate'; acceptsImage: false }
   | { pasteMode: 'auto'; requiresModel: true }
   | { pasteMode: 'auto'; acceptsImage: boolean }
-interface AttachmentsLike {
-  imageLimits: ImageAttachmentLimits
-  validateImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<void>
-  saveImage(input: { data: Uint8Array; mediaType: ImageMediaType; name?: string }): Promise<ImageAttachmentRef>
-  readImage(ref: ImageAttachmentRef, signal?: AbortSignal): Promise<{ ref: ImageAttachmentRef; data: Uint8Array }>
-}
-
 export interface WebPasteServices {
   webServer: WebServerLike
   sessions: SessionsLike
   llm: LlmLike
-  attachments: AttachmentsLike
+  attachments: AttachmentStore
 }
 
 interface UploadImage {
   name: string
   mediaType: string
   data: string
+}
+
+export interface AdmittedPasteImages {
+  readonly refs: readonly ImageAttachmentRef[]
+  readonly names: readonly string[]
 }
 
 export interface WebPasteRequest {
@@ -145,14 +149,45 @@ function parseRequest(value: unknown): WebPasteRequest {
   }
 }
 
-function base64ToBytes(data: string): Uint8Array {
-  try {
-    const binary = atob(data)
-    const bytes = new Uint8Array(binary.length)
-    for (let index = 0; index < binary.length; index++) bytes[index] = binary.charCodeAt(index)
-    return bytes
-  } catch {
-    throw new Error('image data is not valid base64')
+function canonicalBase64Bytes(data: string): number {
+  const decoded = Buffer.from(data, 'base64')
+  if (data.length === 0 || decoded.toString('base64') !== data) {
+    throw new Error('image data is not canonical base64')
+  }
+  return decoded.byteLength
+}
+
+/** Bound the encoded JSON body from both plugin policy and Host batch policy. */
+function uploadBodyLimit(config: ResolvedConfig, attachments: AttachmentStore): number {
+  const count = Math.min(config.maxImages, attachments.imageLimits.maxImagesPerMessage)
+  const perImage = Math.min(config.maxImageBytes, attachments.imageLimits.maxImageBytes)
+  const rawBytes = Math.min(count * perImage, attachments.imageLimits.maxMessageImageBytes)
+  // Separate base64 members can each add padding; names/JSON and a UTF-8
+  // question receive an explicit bounded allowance.
+  const encodedImages = Math.ceil(rawBytes / 3) * 4 + count * 4
+  const envelope = config.maxPromptChars * 4 + count * 1024 + 4096
+  return Math.min(encodedImages + envelope, 64 * 1024 * 1024)
+}
+
+/** Normalize and atomically admit one delegated paste batch through rc.8. */
+export async function admitPastedImages(
+  attachments: AttachmentStore,
+  images: readonly UploadImage[],
+  maxImageBytes: number,
+): Promise<AdmittedPasteImages> {
+  const encoded: EncodedImageAttachment[] = images.map((image) => {
+    if (!ACCEPTED_MEDIA.has(image.mediaType) || !attachments.imageLimits.mediaTypes.includes(image.mediaType as ImageMediaType)) {
+      throw new Error('unsupported image media type: ' + image.mediaType)
+    }
+    if (canonicalBase64Bytes(image.data) > maxImageBytes) {
+      throw new Error('image exceeds the configured byte limit')
+    }
+    const cleanName = (image.name.split(/[\\/]/u).filter((part) => part.length > 0).at(-1) ?? 'pasted-image') || 'pasted-image'
+    return { data: image.data, mediaType: image.mediaType as ImageMediaType, name: cleanName }
+  })
+  return {
+    names: encoded.map(image => image.name ?? 'pasted-image'),
+    refs: await admitEncodedImages(attachments, encoded),
   }
 }
 
@@ -167,8 +202,8 @@ function blocksText(assembler: BlockAssembler): string {
 async function analyzeImages(
   services: WebPasteServices,
   config: ResolvedConfig,
-  refs: ImageAttachmentRef[],
-  names: string[],
+  refs: readonly ImageAttachmentRef[],
+  names: readonly string[],
   question: string,
   signal: AbortSignal,
 ): Promise<string> {
@@ -234,10 +269,9 @@ export function createWebPasteHandler(services: WebPasteServices, config: Resolv
         respond(res, 503, { ok: false, error: { code: 'VISION_NOT_CONFIGURED', message: 'dsh-vision-subagent has no vision route configured; set provider and model in the vision-subagent row config' } })
         return
       }
-      const uploadCap = Math.min(config.maxImageBytes * config.maxImages, 64 * 1024 * 1024)
       let request: WebPasteRequest
       try {
-        request = parseRequest(await readBoundedJson(req, uploadCap + 4096))
+        request = parseRequest(await readBoundedJson(req, uploadBodyLimit(config, services.attachments)))
       } catch (error) {
         respond(res, 400, { ok: false, error: { code: 'VISION_INVALID_ARGUMENT', message: error instanceof Error ? error.message : 'invalid request' } })
         return
@@ -246,30 +280,19 @@ export function createWebPasteHandler(services: WebPasteServices, config: Resolv
         respond(res, 404, { ok: false, error: { code: 'VISION_SESSION_NOT_FOUND', message: 'session does not exist on this host' } })
         return
       }
-      if (request.images.length > config.maxImages) {
-        respond(res, 400, { ok: false, error: { code: 'VISION_TOO_MANY_IMAGES', message: 'images exceeds the configured maximum of ' + config.maxImages } })
+      const maxImages = Math.min(config.maxImages, services.attachments.imageLimits.maxImagesPerMessage)
+      if (request.images.length > maxImages) {
+        respond(res, 400, { ok: false, error: { code: 'VISION_TOO_MANY_IMAGES', message: 'images exceeds the configured maximum of ' + maxImages } })
         return
       }
       if (request.question.length > config.maxPromptChars) {
         respond(res, 400, { ok: false, error: { code: 'VISION_PROMPT_TOO_LONG', message: 'question exceeds the configured character limit of ' + config.maxPromptChars } })
         return
       }
-      const refs: ImageAttachmentRef[] = []
-      const names: string[] = []
+      let refs: readonly ImageAttachmentRef[]
+      let names: readonly string[]
       try {
-        for (const image of request.images) {
-          if (!ACCEPTED_MEDIA.has(image.mediaType) || !services.attachments.imageLimits.mediaTypes.includes(image.mediaType as ImageMediaType)) {
-            throw new Error('unsupported image media type: ' + image.mediaType)
-          }
-          const bytes = base64ToBytes(image.data)
-          const cap = Math.min(config.maxImageBytes, services.attachments.imageLimits.maxImageBytes, services.attachments.imageLimits.maxMessageImageBytes)
-          if (bytes.byteLength > cap) throw new Error('image exceeds the configured byte limit')
-          const cleanName = (image.name.split(/[\\/]/u).filter((part) => part.length > 0).at(-1) ?? 'pasted-image') || 'pasted-image'
-          await services.attachments.validateImage({ data: bytes, mediaType: image.mediaType as ImageMediaType, name: cleanName })
-          const ref = await services.attachments.saveImage({ data: bytes, mediaType: image.mediaType as ImageMediaType, name: cleanName })
-          refs.push(ref)
-          names.push(cleanName)
-        }
+        ;({ refs, names } = await admitPastedImages(services.attachments, request.images, config.maxImageBytes))
       } catch (error) {
         respond(res, 400, { ok: false, error: { code: 'VISION_IMAGE_REJECTED', message: error instanceof Error ? error.message : 'image admission failed' } })
         return
@@ -399,7 +422,7 @@ export function createWebImageHandler(services: WebPasteServices) {
 }
 
 export function registerWebPaste(ctx: { inject(deps: string[], apply: (webCtx: unknown) => () => void): unknown }, config: ResolvedConfig): void {
-  ctx.inject(['webServer', 'sessions', 'llm'], (webCtx) => {
+  ctx.inject(['webServer', 'sessions', 'llm', 'attachments'], (webCtx) => {
     const services = webCtx as unknown as WebPasteServices
     const disposePaste = services.webServer.register({
       kind: 'exact',

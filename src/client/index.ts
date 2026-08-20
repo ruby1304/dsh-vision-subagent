@@ -13,6 +13,7 @@
 
 import { createElement as h, useEffect, useMemo, useState } from 'react'
 import type { ReactElement } from 'react'
+import type { SubmitOutcome } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { ORIGINAL_IMAGE_HINT_LINE, WEB_IMAGE_ENDPOINT, WEB_PASTE_ENDPOINT, VISION_REFERENCE_FIELD, visionImageLink } from '../web-contract.js'
 import { projectBridgedContent } from './chat-render.js'
 import type { BridgedImage, BridgedProjection } from './chat-render.js'
@@ -41,7 +42,13 @@ interface DraftAttachment {
 }
 
 interface ConversationLike {
-  sendSession(session: SessionFace, text: string, imageIds: readonly string[], mode: unknown): Promise<void>
+  sendSession(
+    session: SessionFace,
+    text: string,
+    imageIds: readonly string[],
+    mode: unknown,
+    signal?: AbortSignal,
+  ): Promise<SubmitOutcome>
   draftImages(ids: readonly string[]): readonly DraftAttachment[]
   releaseDraftImages(attachments: readonly DraftAttachment[]): void
 }
@@ -420,10 +427,10 @@ export function apply(ctx: ContextLike): () => void {
     text: string,
     imageIds: readonly string[],
     mode: unknown,
-  ): Promise<void> {
+    signal?: AbortSignal,
+  ): Promise<SubmitOutcome> {
     if (imageIds.length === 0) {
-      await original.call(this, session, text, imageIds, mode)
-      return
+      return original.call(this, session, text, imageIds, mode, signal)
     }
     let route: PasteRoute = 'delegate'
     if (connection !== undefined) {
@@ -433,8 +440,12 @@ export function apply(ctx: ContextLike): () => void {
           connection,
           fetch,
           PREFLIGHT_TIMEOUT_MS,
+          signal,
         )
       } catch (error) {
+        // A cancelled submit is not a capability miss. In particular, do not
+        // turn it into a fresh delegated upload after the composer has moved on.
+        if (signal?.aborted) signal.throwIfAborted()
         // Capability uncertainty must not eat the user's send. The historical
         // delegate path is the safe fallback because it works on text-only
         // routes; native admission remains available when preflight succeeds.
@@ -442,8 +453,7 @@ export function apply(ctx: ContextLike): () => void {
       }
     }
     if (route === 'native') {
-      await original.call(this, session, text, imageIds, mode)
-      return
+      return original.call(this, session, text, imageIds, mode, signal)
     }
     const attachments = this.draftImages(imageIds)
     if (attachments.length !== imageIds.length) {
@@ -452,6 +462,9 @@ export function apply(ctx: ContextLike): () => void {
     // Analysis gets its own controller. A timed-out capability preflight must
     // never poison the delegated fallback with an already-aborted signal.
     const controller = new AbortController()
+    const analysisSignal = signal === undefined
+      ? controller.signal
+      : AbortSignal.any([signal, controller.signal])
     const timer = setTimeout(() => controller.abort('vision paste analysis timed out'), REQUEST_TIMEOUT_MS)
     const overlay = createPendingOverlay()
     overlay.setText('正在分析图片…')
@@ -462,18 +475,25 @@ export function apply(ctx: ContextLike): () => void {
       overlay.setText('正在分析图片… ' + Math.round((performance.now() - startedAt) / 1000) + 's')
     }, 1000)
     let errorLinger: ReturnType<typeof setTimeout> | undefined
+    let phase: 'analysis' | 'submit' = 'analysis'
     const settle = (): void => {
       pending.delete(session.sessionId)
       overlay.remove()
     }
     try {
-      const analysis = await analyzePasted(session.sessionId, text, attachments, fetch, controller.signal)
-      this.releaseDraftImages(attachments)
-      await original.call(this, session, composeText(text, analysis), [], mode)
+      const analysis = await analyzePasted(session.sessionId, text, attachments, fetch, analysisSignal)
+      phase = 'submit'
+      const outcome = await original.call(this, session, composeText(text, analysis), [], mode, signal)
+      // Match rc.8's native transaction boundary: a refused Host admission
+      // leaves the user's draft images intact for a retry or edit.
+      if (outcome.kind === 'success') this.releaseDraftImages(attachments)
+      return outcome
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      overlay.setError('图片分析失败：' + message + '（消息未发送，图片已保留）')
-      errorLinger = setTimeout(settle, OVERLAY_ERROR_MS)
+      if (phase === 'analysis') {
+        const message = error instanceof Error ? error.message : String(error)
+        overlay.setError('图片分析失败：' + message + '（消息未发送，图片已保留）')
+        errorLinger = setTimeout(settle, OVERLAY_ERROR_MS)
+      }
       throw error
     } finally {
       clearTimeout(timer)

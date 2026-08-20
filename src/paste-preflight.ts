@@ -109,21 +109,35 @@ export async function resolvePasteRouteWithTimeout(
   connection: PasteRouteConnection,
   fetcher: typeof fetch,
   timeoutMs: number,
+  signal?: AbortSignal,
 ): Promise<PasteRoute> {
   const controller = new AbortController()
+  const preflightSignal = signal === undefined
+    ? controller.signal
+    : AbortSignal.any([signal, controller.signal])
   let timer: ReturnType<typeof setTimeout> | undefined
+  let onAbort: (() => void) | undefined
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
       controller.abort('vision paste capability preflight timed out')
       reject(new Error('vision paste capability preflight timed out'))
     }, timeoutMs)
   })
+  const cancelled = signal === undefined
+    ? new Promise<never>(() => {})
+    : new Promise<never>((_resolve, reject) => {
+        onAbort = () => reject(signal.reason ?? new DOMException('The operation was aborted.', 'AbortError'))
+        if (signal.aborted) onAbort()
+        else signal.addEventListener('abort', onAbort, { once: true })
+      })
   try {
     return await Promise.race([
-      resolvePasteRoute(sessionId, connection, fetcher, controller.signal),
+      resolvePasteRoute(sessionId, connection, fetcher, preflightSignal),
       timeout,
+      cancelled,
     ])
   } finally {
     if (timer !== undefined) clearTimeout(timer)
+    if (signal !== undefined && onAbort !== undefined) signal.removeEventListener('abort', onAbort)
   }
 }
